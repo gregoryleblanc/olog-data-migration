@@ -8,6 +8,9 @@ import java.sql.Statement;
 import java.lang.Class;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+
+import org.joda.time.LocalDate;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -65,26 +68,30 @@ public class oualLogRetrieval implements LogRetrieval {
     @Override
     public List<Tag> retrieveTags() {
         List<Tag> allTags = new ArrayList<Tag>();
-        LocalDateTime currentDate = new LocalDateTime();
-        allTags.add(new Tag("importedData" + currentDate.toString()));
+        allTags.add(new Tag("importedData" + (new LocalDate()).toString()));
+        allTags.add(new Tag("jeoLogbook"));
         return allTags;
     }
 
     @Override
     public int retireveLogCount() {
+        int count = 0;
         try {
             // create our mysql database connection
-            Class.forName("getLogCount");
+            Class.forName(myDriver);
             Connection getCount = DriverManager.getConnection(myUrl, myUser, myPassword);
-            String countQuery = "SELECT COUNT(*) FROM logbook;";
+            String countQuery = "SELECT COUNT(*) AS rowcount FROM logbook;";
             Statement countStatement = getCount.createStatement();
             ResultSet countResults = countStatement.executeQuery(countQuery);
+            countResults.next();
+            count = countResults.getInt("rowcount");
             countStatement.close();
+            // countResults.getInt(columnLabel);
         } catch (Exception e) {
             System.err.println("Got an exception! ");
             System.err.println(e.getMessage());
         }
-        return 0;
+        return count;
     }
 
     @Override
@@ -98,6 +105,7 @@ public class oualLogRetrieval implements LogRetrieval {
     public List<Logbook> retrieveLogbooks() {
         List<Logbook> myLogbook = new ArrayList<Logbook>();
         myLogbook.add(new Logbook("jeoLogbook", null));
+        myLogbook.add(new Logbook("Operations", null));
         return myLogbook;
     }
 
@@ -110,16 +118,19 @@ public class oualLogRetrieval implements LogRetrieval {
         // Boolean isPrivate = false;
         // Instant originalDate = Instant.now();
         List<Log> someLogs = new ArrayList<Log>();
+        Long counter = (long) 0;
+        Long yearMinutes = ChronoUnit.MINUTES.between(java.time.LocalDateTime.of(java.time.LocalDateTime.now().getYear(), 1, 1, 0, 0), java.time.LocalDateTime.now());
 
         try {
             Class.forName(myDriver);
             Connection conn = DriverManager.getConnection(myUrl, myUser, myPassword);
-            String query = "SELECT name, message, when_posted, ipaddr, private from logbook ORDER BY when_posted ASC LIMIT 1";
+            String query = "SELECT name, message, when_posted, ipaddr, private from logbook ORDER BY when_posted ASC LIMIT 10";
             Statement st = conn.createStatement();
             ResultSet rs = st.executeQuery(query);
             Attribute ipAddress;
             Attribute isPrivate;
             while(rs.next()) {
+                counter++;
                 LogBuilder log = Log.LogBuilder.createLog();
                 Property myProperties = new Property();
                 Set<Property> allProperties = new HashSet<Property>();
@@ -130,6 +141,7 @@ public class oualLogRetrieval implements LogRetrieval {
                 log.withLogbook(new Logbook("jeoLogbook", null));
                 log.withLogbook(new Logbook("Operations", null));
                 myTags.add(new Tag("jeoLogbook"));
+                myTags.add(new Tag("importedData" + (new LocalDate()).toString()));
                 log.setTags(myTags);
                 ipAddress = new Attribute("IP Address", rs.getString("ipaddr"));
                 isPrivate = new Attribute("Is Private", rs.getString("private"));
@@ -140,6 +152,7 @@ public class oualLogRetrieval implements LogRetrieval {
                 allProperties.add(myProperties);
                 log.setProperties(allProperties);
                 log.modifyDate(Instant.now());
+                log.id(yearMinutes * counter);
                 someLogs.add(log.build());
             }
             st.close();
